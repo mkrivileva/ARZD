@@ -25,6 +25,7 @@ import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.widget.TextView;
 import android.widget.Toast;
 import com.google.ar.core.Anchor;
 import com.google.ar.core.ArCoreApk;
@@ -35,6 +36,7 @@ import com.google.ar.core.Plane;
 import com.google.ar.core.Point;
 import com.google.ar.core.Point.OrientationMode;
 import com.google.ar.core.PointCloud;
+import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
 import com.google.ar.core.Trackable;
 import com.google.ar.core.TrackingState;
@@ -57,6 +59,7 @@ import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 import com.onlylemi.mapview.library.MapView;
 import com.onlylemi.mapview.library.MapViewListener;
+import com.onlylemi.mapview.library.layer.LocationLayer;
 import com.onlylemi.mapview.library.layer.MarkLayer;
 import com.onlylemi.mapview.library.layer.RouteLayer;
 import com.onlylemi.mapview.library.utils.MapUtils;
@@ -76,8 +79,11 @@ import javax.microedition.khronos.opengles.GL10;
 public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.Renderer {
   private static final String TAG = HelloArActivity.class.getSimpleName();
 
+  private TextView text;
 
   private MapView mapView;
+
+  private LocationLayer locationLayer;
 
   private MarkLayer markLayer;
   private RouteLayer routeLayer;
@@ -86,6 +92,12 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
   private List<PointF> nodesContract;
   private List<PointF> marks;
   private List<String> marksName;
+
+  private PointF currentLocation;
+  private PointF deltaLocation;
+
+  private Pose currentPose;
+  private Pose prevPose;
 
   // Rendering. The Renderers are created here, and initialized when the GL surface is created.
   private GLSurfaceView surfaceView;
@@ -129,6 +141,11 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     setContentView(R.layout.activity_main);
 
 
+    text = (TextView) findViewById(R.id.textview);
+
+
+    currentLocation = new PointF(520, 840);
+    deltaLocation = new PointF(0, 0);
     nodes = TestData.getNodesList();
     nodesContract = TestData.getNodesContactList();
     marks = TestData.getMarks();
@@ -146,6 +163,9 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     mapView.setMapViewListener(new MapViewListener() {
       @Override
       public void onMapLoadSuccess() {
+        locationLayer = new LocationLayer(mapView, currentLocation);
+        mapView.addLayer(locationLayer);
+
         routeLayer = new RouteLayer(mapView);
         mapView.addLayer(routeLayer);
 
@@ -156,7 +176,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
           public void markIsClick(int num) {
             PointF target = new PointF(marks.get(num).x, marks.get(num).y);
             List<Integer> routeList = MapUtils.getShortestDistanceBetweenTwoPoints
-                    (marks.get(0), target, nodes, nodesContract);
+                    (marks.get(3), target, nodes, nodesContract);
             routeLayer.setNodeList(nodes);
             routeLayer.setRouteList(routeList);
             mapView.refresh();
@@ -173,8 +193,10 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
 
 
 
+    prevPose = new Pose(new float[]{0,0,0}, new float[]{0,0,0,0} );
     surfaceView = findViewById(R.id.surfaceview);
     displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
+
 
     // Set up tap listener.
     tapHelper = new TapHelper(/*context=*/ this);
@@ -330,6 +352,9 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     displayRotationHelper.updateSessionIfNeeded(session);
 
     try {
+
+
+
       session.setCameraTextureName(backgroundRenderer.getTextureId());
 
       // Obtain the current frame from ARSession. When the configuration is set to
@@ -337,6 +362,22 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
       // camera framerate.
       Frame frame = session.update();
       Camera camera = frame.getCamera();
+
+
+      currentPose = camera.getPose();
+      deltaLocation.y = currentPose.tz() - prevPose.tz();
+      deltaLocation.x = currentPose.tx() - prevPose.tx();
+      prevPose = currentPose;
+
+      currentLocation.x += deltaLocation.x * 100;
+      currentLocation.y += deltaLocation.y * 100;
+
+      locationLayer.setCurrentPosition(currentLocation);
+      mapView.addLayer(locationLayer);
+      mapView.refresh();
+
+      String loc = "  " + currentLocation.toString();
+      text.setText(camera.getPose().toString() + loc);
 
       // Handle one tap per frame.
       handleTap(frame, camera);
@@ -414,6 +455,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
   private void handleTap(Frame frame, Camera camera) {
     MotionEvent tap = tapHelper.poll();
     if (tap != null && camera.getTrackingState() == TrackingState.TRACKING) {
+
       for (HitResult hit : frame.hitTest(tap)) {
         // Check if any plane was hit, and if it was hit inside the plane polygon
         Trackable trackable = hit.getTrackable();
