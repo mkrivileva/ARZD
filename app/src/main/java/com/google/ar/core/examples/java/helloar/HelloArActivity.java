@@ -16,6 +16,9 @@
 
 package com.google.ar.core.examples.java.helloar;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.PointF;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
@@ -52,8 +55,16 @@ import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
 import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
+import com.onlylemi.mapview.library.MapView;
+import com.onlylemi.mapview.library.MapViewListener;
+import com.onlylemi.mapview.library.layer.MarkLayer;
+import com.onlylemi.mapview.library.layer.RouteLayer;
+import com.onlylemi.mapview.library.utils.MapUtils;
+
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
+
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
@@ -64,6 +75,17 @@ import javax.microedition.khronos.opengles.GL10;
  */
 public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.Renderer {
   private static final String TAG = HelloArActivity.class.getSimpleName();
+
+
+  private MapView mapView;
+
+  private MarkLayer markLayer;
+  private RouteLayer routeLayer;
+
+  private List<PointF> nodes;
+  private List<PointF> nodesContract;
+  private List<PointF> marks;
+  private List<String> marksName;
 
   // Rendering. The Renderers are created here, and initialized when the GL surface is created.
   private GLSurfaceView surfaceView;
@@ -105,6 +127,52 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
+
+
+    nodes = TestData.getNodesList();
+    nodesContract = TestData.getNodesContactList();
+    marks = TestData.getMarks();
+    marksName = TestData.getMarksName();
+    MapUtils.init(nodes.size(), nodesContract.size());
+
+    mapView = (MapView) findViewById(R.id.mapview);
+    Bitmap bitmap = null;
+    try {
+      bitmap = BitmapFactory.decodeStream(getAssets().open("flat2.png"));
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    mapView.loadMap(bitmap);
+    mapView.setMapViewListener(new MapViewListener() {
+      @Override
+      public void onMapLoadSuccess() {
+        routeLayer = new RouteLayer(mapView);
+        mapView.addLayer(routeLayer);
+
+        markLayer = new MarkLayer(mapView, marks, marksName);
+        mapView.addLayer(markLayer);
+        markLayer.setMarkIsClickListener(new MarkLayer.MarkIsClickListener() {
+          @Override
+          public void markIsClick(int num) {
+            PointF target = new PointF(marks.get(num).x, marks.get(num).y);
+            List<Integer> routeList = MapUtils.getShortestDistanceBetweenTwoPoints
+                    (marks.get(0), target, nodes, nodesContract);
+            routeLayer.setNodeList(nodes);
+            routeLayer.setRouteList(routeList);
+            mapView.refresh();
+          }
+        });
+        mapView.refresh();
+      }
+
+      @Override
+      public void onMapLoadFail() {
+      }
+
+    });
+
+
+
     surfaceView = findViewById(R.id.surfaceview);
     displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
 
